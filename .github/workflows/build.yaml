@@ -34,8 +34,8 @@ jobs:
       - name: Verify Vite Build
         run: |
           echo "Checking dist directory..."
-          ls -la || echo "Current directory contents"
-          ls -la dist || echo "dist directory not found"
+          dir || echo "Current directory contents"
+          dir dist 2>/dev/null || echo "dist directory not found"
 
       - name: Build Electron App
         uses: samuelmeuli/action-electron-builder@v1
@@ -47,9 +47,9 @@ jobs:
       - name: List Electron Output
         run: |
           echo "Checking dist_electron directory..."
-          ls -la || echo "Current directory contents"
-          ls -la dist_electron || echo "dist_electron directory not found"
-          find . -name "*.exe" -o -name "*.dmg" -o -name "*.zip" -o -name "*.blockmap" || echo "No build artifacts found"
+          dir || echo "Current directory contents"
+          dir dist_electron 2>/dev/null || echo "dist_electron directory not found"
+          dir /s *.exe *.dmg *.zip *.blockmap 2>/dev/null || echo "No build artifacts found"
 
       - name: Upload Release Assets
         uses: softprops/action-gh-release@v1

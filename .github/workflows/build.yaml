@@ -29,14 +29,21 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      # 注意：这里不再单独运行 npm run build，因为下方的 build_script_name 会触发它
       - name: Build App
         uses: samuelmeuli/action-electron-builder@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          # 设为 false，我们用下面的 softprops 统一上传，方便观察日志
           release: false
           build_script_name: build:electron
+      
+      - name: Inspect directory structure
+        run: |
+          echo "Listing all files in the current workspace:"
+          find . -maxdepth 3 -not -path '*/.*'
+          if [ -d "dist_electron" ]; then
+            echo "Detailed content of dist_electron:"
+            ls -R dist_electron
+          fi
 
       - name: Upload Release Assets
         uses: softprops/action-gh-release@v1

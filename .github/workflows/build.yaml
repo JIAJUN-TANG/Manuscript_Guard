@@ -8,6 +8,9 @@ on:
 jobs:
   release:
     runs-on: ${{ matrix.os }}
+    # 必须开启写入权限，否则无法创建 Release 或上传 Assets
+    permissions:
+      contents: write
 
     strategy:
       matrix:
@@ -26,25 +29,24 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Build Vite Frontend
-        run: npm run build
-
+      # 注意：这里不再单独运行 npm run build，因为下方的 build_script_name 会触发它
       - name: Build App
         uses: samuelmeuli/action-electron-builder@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          release: true
-          build_script_name: build:electron 
+          # 设为 false，我们用下面的 softprops 统一上传，方便观察日志
+          release: false
+          build_script_name: build:electron
 
       - name: Upload Release Assets
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
+          # 关键点：路径必须改为 dist_electron，并使用递归匹配
           files: |
-            dist/**/*.exe
-            dist/**/*.dmg
-            dist/**/*.zip
-            dist/**/*.pkg
-            dist/**/*.AppImage
+            dist_electron/**/*.exe
+            dist_electron/**/*.dmg
+            dist_electron/**/*.zip
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

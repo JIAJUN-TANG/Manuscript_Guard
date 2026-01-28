@@ -14,6 +14,39 @@
     "electron:pack": "electron-builder --dir",
     "electron:dist": "electron-builder"
   },
+  "build": {
+    "appId": "com.manuscriptguard.app",
+    "productName": "ManuscriptGuard",
+    "directories": {
+      "output": "dist_electron",
+      "buildResources": "assets"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "JIAJUN-TANG",
+        "repo": "Manuscript_Guard"
+      }
+    ],
+    "files": [
+      "dist/**/*",
+      "main.js",
+      "package.json"
+    ],
+    "mac": {
+      "target": ["dmg", "zip"],
+      "icon": "assets/icon.icns"
+    },
+    "win": {
+      "target": ["nsis", "zip"],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "ManuscriptGuard"
+    }
+  },
   "dependencies": {
     "@google/genai": "*",
     "diff": "^8.0.3",
@@ -34,37 +67,5 @@
     "vite": "^7.3.1",
     "vue-tsc": "latest",
     "wait-on": "^7.2.0"
-  },
-  "build": {
-    "appId": "com.manuscriptguard.app",
-    "productName": "ManuscriptGuard",
-    "directories": {
-      "output": "dist_electron",
-      "buildResources": "assets"
-    },
-    "files": [
-      "dist/**/*",
-      "main.js",
-      "package.json"
-    ],
-    "mac": {
-      "target": [
-        "dmg",
-        "zip"
-      ],
-      "icon": "assets/icon.icns"
-    },
-    "win": {
-      "target": [
-        "nsis",
-        "zip"
-      ],
-      "icon": "assets/icon.ico"
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "shortcutName": "ManuscriptGuard"
-    }
   }
 }

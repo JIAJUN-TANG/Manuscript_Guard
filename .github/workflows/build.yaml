@@ -32,10 +32,16 @@ jobs:
         run: npm run build
 
       - name: Verify Vite Build
+        shell: bash
         run: |
           echo "Checking dist directory..."
-          dir || echo "Current directory contents"
-          dir dist 2>/dev/null || echo "dist directory not found"
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            cmd /c "dir"
+            cmd /c "if exist dist dir dist"
+          else
+            ls -la
+            ls -la dist 2>/dev/null || echo "dist directory not found"
+          fi
 
       - name: Build Electron App
         uses: samuelmeuli/action-electron-builder@v1
@@ -45,11 +51,18 @@ jobs:
           build_script_name: build:electron
 
       - name: List Electron Output
+        shell: bash
         run: |
           echo "Checking dist_electron directory..."
-          dir || echo "Current directory contents"
-          dir dist_electron 2>/dev/null || echo "dist_electron directory not found"
-          dir /s *.exe *.dmg *.zip *.blockmap 2>/dev/null || echo "No build artifacts found"
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            cmd /c "dir"
+            cmd /c "if exist dist_electron dir dist_electron"
+            cmd /c "dir /s *.exe *.dmg *.zip *.blockmap 2>NUL"
+          else
+            ls -la
+            ls -la dist_electron 2>/dev/null || echo "dist_electron directory not found"
+            find . -name "*.exe" -o -name "*.dmg" -o -name "*.zip" -o -name "*.blockmap" 2>/dev/null || echo "No build artifacts found"
+          fi
 
       - name: Upload Release Assets
         uses: softprops/action-gh-release@v1

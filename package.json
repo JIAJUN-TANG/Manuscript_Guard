@@ -18,6 +18,7 @@
     "@google/genai": "*",
     "diff": "^8.0.3",
     "mammoth": "^1.11.0",
+    "terser": "^5.46.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   },

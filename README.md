@@ -1,0 +1,130 @@
+# ManuscriptGuard
+
+**ManuscriptGuard** 是一个本地优先的手稿版本控制工具，帮助作者追踪和管理文档的变更历史，类似代码版本控制系统，但专为写作场景优化。
+
+## 🚀 功能特性
+
+### 核心功能
+- **项目管理**：创建和管理多个写作项目
+- **版本控制**：上传和追踪文档的多个版本
+- **差异比较**：可视化查看不同版本之间的变化
+- **分支管理**：支持创建多个分支，类似 Git 的工作流
+- **版本分析**：自动计算版本间的相似度并分类变更类型
+- **版本下载**：导出任意版本的文档
+- **本地存储**：所有数据安全存储在本地，保护隐私
+
+### 技术特性
+- **多格式支持**：支持 .txt、.md 和 .docx 文件格式
+- **语义化版本**：自动生成语义化版本号（V1.0.0）
+- **Electron 桌面应用**：跨平台支持
+
+## 📦 安装指南
+
+### 从发布版安装
+1. 前往 [Releases](https://github.com/JIAJUN-TANG/Manuscript_Guard/releases) 页面下载最新的安装包
+2. 根据您的操作系统选择对应的安装文件：
+   - Windows: `.exe` 文件
+   - macOS: `.dmg` 文件
+   - Linux: `.AppImage` 或 `.deb` 文件
+3. 运行安装程序并按照提示完成安装
+
+### 从源码构建
+1. 克隆仓库：
+   ```bash
+   git clone https://github.com/JIAJUN-TANG/Manuscript_Guard.git
+   cd manuscript_guard
+   ```
+
+2. 安装依赖：
+   ```bash
+   npm install
+   ```
+
+3. 启动开发服务器：
+   ```bash
+   npm run dev
+   ```
+
+4. 构建生产版本：
+   ```bash
+   npm run build
+   ```
+
+## 📖 使用指南
+
+### 创建新项目
+1. 点击左侧边栏的「新建项目」按钮
+2. 输入项目名称（可选）
+3. 选择初始手稿文件（支持 .txt、.md、.docx 格式）
+4. 点击「创建项目」按钮
+
+### 添加新版本
+1. 选择要更新的项目
+2. 点击顶部导航栏的「上传版本」按钮，或直接将文件拖放到主区域
+3. 系统会自动分析新版本与上一版本的差异，并生成新版本号
+
+### 比较版本
+1. 在版本列表中，点击版本右侧的「比较」按钮
+2. 右侧会显示与上一版本的差异对比
+3. 可以通过滚动查看所有变更
+
+### 管理分支
+1. 在顶部导航栏的分支选择器中，可以查看当前分支
+2. 点击分支选择器，选择「创建新分支」
+3. 输入分支名称，点击「创建」
+4. 可以在不同分支间切换，每个分支有独立的版本历史
+
+### 下载版本
+1. 在版本列表中，点击版本右侧的「下载」按钮
+2. 系统会生成带有版本号和日期的文件名并开始下载
+
+### 预览版本
+1. 在版本列表中，点击版本右侧的「预览」按钮
+2. 系统会在模态框中显示版本内容
+3. 可以选择「使用其他应用打开」来在外部编辑器中查看
+
+## 🛠 技术栈
+
+- **前端框架**：React 19.2.4
+- **开发语言**：TypeScript
+- **样式方案**：Tailwind CSS
+- **构建工具**：Vite 7.3.1
+- **桌面应用**：Electron
+- **核心依赖**：
+  - `diff`：用于文本差异比较
+  - `mammoth`：用于处理 docx 文件
+
+## 📁 项目结构
+
+```
+manuscriptguard/
+├── components/         # React 组件
+│   ├── BranchSelector.tsx    # 分支选择器
+│   ├── ComparisonDrawer.tsx  # 差异比较抽屉
+│   ├── Navbar.tsx            # 导航栏
+│   ├── Sidebar.tsx           # 侧边栏
+│   └── VersionList.tsx       # 版本列表
+├── services/          # 服务层
+│   ├── storage.ts            # 存储服务
+│   └── textUtils.ts          # 文本处理工具
+├── App.tsx            # 主应用组件
+├── main.js            # Electron 主进程
+├── package.json       # 项目配置
+└── README.md          # 项目说明
+```
+
+## 🤝 贡献指南
+
+1. Fork 本仓库
+2. 创建您的特性分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交您的更改 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 打开一个 Pull Request
+
+## 📄 许可证
+
+本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情
+
+---
+
+**ManuscriptGuard** - 让您的写作过程更加可控和高效

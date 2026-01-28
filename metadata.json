@@ -1,0 +1,5 @@
+{
+  "name": "ManuscriptGuard",
+  "description": "A local-first manuscript version control system for researchers. Track changes, compare versions, and analyze evolution of your papers (.docx, .md, .txt) with AI-powered insights.",
+  "requestFramePermissions": []
+}

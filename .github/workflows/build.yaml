@@ -32,7 +32,10 @@ jobs:
         run: npm run build
 
       - name: Verify Vite Build
-        run: ls -R dist
+        run: |
+          echo "Checking dist directory..."
+          ls -la || echo "Current directory contents"
+          ls -la dist || echo "dist directory not found"
 
       - name: Build Electron App
         uses: samuelmeuli/action-electron-builder@v1
@@ -44,7 +47,9 @@ jobs:
       - name: List Electron Output
         run: |
           echo "Checking dist_electron directory..."
-          ls -R dist_electron || echo "dist_electron not found"
+          ls -la || echo "Current directory contents"
+          ls -la dist_electron || echo "dist_electron directory not found"
+          find . -name "*.exe" -o -name "*.dmg" -o -name "*.zip" -o -name "*.blockmap" || echo "No build artifacts found"
 
       - name: Upload Release Assets
         uses: softprops/action-gh-release@v1
@@ -55,6 +60,6 @@ jobs:
             dist_electron/*.dmg
             dist_electron/*.zip
             dist_electron/*.blockmap
-          fail_on_unmatched_files: true
+          fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

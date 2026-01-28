@@ -18,14 +18,14 @@ function createWindow() {
       contextIsolation: false, // For simple demo purposes; use preload in prod
       webSecurity: false // Allow loading local files easily in dev
     },
-    icon: path.join(__dirname, 'public/favicon.ico')
+    icon: path.join(__dirname, 'assets/icon.ico')
   });
 
   if (isDev) {
-    win.loadURL('http://localhost:3000');
+    win.loadURL('http://localhost:5173');
     win.webContents.openDevTools();
   } else {
-    win.loadFile(path.join(__dirname, 'build/index.html'));
+    win.loadFile(path.join(__dirname, 'dist/index.html'));
   }
 }
 

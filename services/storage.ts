@@ -1,125 +1,131 @@
 import { Project } from '../types';
 
-// Electron/Node modules (dynamically imported to verify environment)
-let fs: any;
-let path: any;
-let electron: any;
+let currentPath: string = '';
 
-let userDataPath: string = '';
-let filesDir: string = '';
-let dataPath: string = '';
-
-const isElectron = () => {
-    return window && (window as any).process && (window as any).process.type;
-};
+const getAPI = () => (window as any).electronAPI;
 
 export const initStorage = async () => {
-    if (!isElectron()) {
-        console.warn("Not running in Electron. Storage persistence limited to localStorage.");
-        return;
-    }
-
     try {
-        fs = window.require('fs');
-        path = window.require('path');
-        electron = window.require('electron');
-        const { ipcRenderer } = electron;
-
-        userDataPath = await ipcRenderer.invoke('get-user-data-path');
-        filesDir = path.join(userDataPath, 'files');
-        dataPath = path.join(userDataPath, 'data.json');
-
-        if (!fs.existsSync(filesDir)) {
-            fs.mkdirSync(filesDir, { recursive: true });
+        const api = getAPI();
+        if (!api) {
+            console.warn("未检测到 Electron 环境，将使用 LocalStorage");
+            return;
         }
-
-        console.log("Storage initialized at:", userDataPath);
+        
+        const savedPath = localStorage.getItem('custom_backup_path');
+        currentPath = savedPath || await api.getDefaultBackupPath();
+        
+        console.log("存储系统初始化成功，路径为:", currentPath);
     } catch (e) {
-        console.error("Failed to initialize storage:", e);
+        console.error("存储初始化失败:", e);
     }
 };
 
 export const saveSourceFile = async (file: File, versionId: string): Promise<string> => {
-    if (!isElectron() || !filesDir) return '';
+    const api = getAPI();
+    // 如果不是 Electron 环境或 API 不可用，则无法保存到文件系统
+    if (!api || !currentPath) return '';
 
     try {
-        // file.path gives the original path in Electron
+        const filesDir = `${currentPath}/files`;
+        const newFileName = `${versionId}_${file.name}`;
+
+        // 首先尝试获取原始路径
         const originalPath = (file as any).path;
-        const extension = file.name.split('.').pop() || '';
-        const newFileName = `${versionId}_${file.name}`; // Ensure unique
-        const destPath = path.join(filesDir, newFileName);
-
+        
         if (originalPath) {
-            fs.copyFileSync(originalPath, destPath);
+            // 如果有原始路径，使用文件复制方式
+            const savedPath = await api.saveFile({
+                sourcePath: originalPath,
+                destDir: filesDir,
+                fileName: newFileName
+            });
+            return savedPath;
         } else {
-            // Fallback if path not available (e.g. drag drop sometimes?), write bytes
-            // Note: in FileReader w/ React, getting bytes is async. 
-            // Ideally we leverage the original path. 
-            console.warn("Original file path missing, cannot copy. Attempting write.");
+            // 如果没有原始路径（比如通过拖拽或文件选择器），使用文件内容方式
+            console.log("没有检测到文件原始路径，将使用文件内容保存");
+            
+            // 读取文件内容
+            const reader = new FileReader();
+            const content = await new Promise<string>((resolve, reject) => {
+                reader.onload = (e) => resolve(e.target?.result as string);
+                reader.onerror = reject;
+                reader.readAsText(file);
+            });
+            
+            // 调用主进程保存文件内容
+            const savedPath = await api.saveFileContent({
+                content,
+                destDir: filesDir,
+                fileName: newFileName
+            });
+            return savedPath;
         }
-
-        return destPath;
     } catch (e) {
         console.error("Failed to save source file:", e);
         return '';
     }
 };
 
-export const saveMetadata = async (projects: Project[]) => {
-    if (!isElectron() || !dataPath) {
-        localStorage.setItem('manuscript_guard_projects', JSON.stringify(projects));
-        return;
+export const getDefaultBackupPath = async (): Promise<string> => {
+    const api = getAPI();
+    if (!api) {
+        throw new Error("Electron API 不可用");
     }
+    return await api.getDefaultBackupPath();
+};
+
+export const updateBackupPath = async (newPath: string): Promise<void> => {
+    const api = getAPI();
+    if (!api) throw new Error("Electron API 不可用");
 
     try {
-        fs.writeFileSync(dataPath, JSON.stringify(projects, null, 2));
+        // 调用主进程进行物理文件搬迁
+        await api.updateBackupLocation({ oldPath: currentPath, newPath });
+        
+        // 更新内存状态和持久化记录
+        currentPath = newPath;
+        localStorage.setItem('custom_backup_path', newPath);
     } catch (e) {
-        console.error("Failed to save metadata:", e);
+        console.error("路径迁移失败:", e);
+        throw e;
     }
 };
 
+export const getCurrentBackupPath = (): string => currentPath;
+
+export const saveMetadata = async (projects: Project[]) => {
+    const api = getAPI();
+    if (!api) {
+        localStorage.setItem('manuscript_guard_projects', JSON.stringify(projects));
+        return;
+    }
+    const dataPath = `${currentPath}/data.json`;
+    await api.saveMetadata(dataPath, projects);
+};
+
 export const loadMetadata = async (): Promise<Project[] | null> => {
-    let projects: Project[] | null = null;
-
-    if (!isElectron() || !dataPath) {
+    const api = getAPI();
+    if (!api) {
         const saved = localStorage.getItem('manuscript_guard_projects');
-        projects = saved ? JSON.parse(saved) : null;
-    } else {
-        try {
-            if (fs.existsSync(dataPath)) {
-                const data = fs.readFileSync(dataPath, 'utf-8');
-                projects = JSON.parse(data);
-            }
-        } catch (e) {
-            console.error("Failed to load metadata:", e);
-        }
+        return saved ? JSON.parse(saved) : null;
+    }
+    const dataPath = `${currentPath}/data.json`;
+    return await api.loadMetadata(dataPath);
+};
+
+export const deleteSourceFile = async (storedPath: string): Promise<boolean> => {
+    const api = getAPI();
+    if (!api) {
+        console.warn("未检测到 Electron 环境，无法删除文件");
+        return false;
     }
 
-    if (projects) {
-        // Migration: Convert legacy projects (versions[]) to branch-based projects (branches[])
-        const migratedProjects = projects.map(p => {
-            if (!p.branches || p.branches.length === 0) {
-                // If it has legacy versions, move them to 'main' branch
-                const legacyVersions = p.versions || [];
-                const mainBranch = {
-                    id: 'branch-main',
-                    name: 'main',
-                    versions: legacyVersions,
-                    createdAt: p.lastModified
-                };
-
-                return {
-                    ...p,
-                    branches: [mainBranch],
-                    defaultBranchId: 'branch-main',
-                    versions: undefined // Clear legacy
-                };
-            }
-            return p;
-        });
-
-        return migratedProjects;
+    try {
+        await api.deleteFile(storedPath);
+        return true;
+    } catch (e) {
+        console.error("删除文件失败:", e);
+        return false;
     }
-
-    return null;
 };

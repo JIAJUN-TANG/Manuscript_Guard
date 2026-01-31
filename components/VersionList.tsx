@@ -168,7 +168,7 @@ export const VersionList: React.FC<VersionListProps> = ({
                                                 <Download className="w-4 h-4" />
                                             </button>
                                             <button
-                                                onClick={(e) => onDelete(e, version.id)}
+                                                onClick={(e) => { e.stopPropagation(); onDelete(e, version.id); }}
                                                 className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
                                                 title="删除版本"
                                             >

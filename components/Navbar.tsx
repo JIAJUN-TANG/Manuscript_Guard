@@ -14,10 +14,10 @@ export const Navbar: React.FC<NavbarProps> = ({ activeProject, versionCount, onU
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     return (
-        <header className="h-16 border-b border-slate-200 bg-white/80 backdrop-blur-md flex items-center justify-between px-8 shadow-sm z-10 shrink-0 sticky top-0">
+        <header className="h-16 border-b border-slate-200 bg-white flex items-center justify-between px-8 shadow-sm z-10 shrink-0 sticky top-0">
             <div className="flex items-center gap-4 min-w-0">
                 <h2 className="text-lg font-bold text-slate-800 truncate">
-                    {activeProject ? activeProject.name : 'Dashboard'}
+                    {activeProject ? activeProject.name : '仪表盘'}
                 </h2>
                 {activeProject && versionCount !== undefined && (
                     <span className="hidden xl:inline-block px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 text-xs font-mono font-medium border border-indigo-100 whitespace-nowrap">

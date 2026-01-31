@@ -1,28 +1,53 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { STORAGE_KEY } from './constants';
 import { Project, ManuscriptVersion, Branch } from './types';
 import { calculateHash, calculateSimilarity, determineVersionType, readFileContent } from './services/textUtils';
-import { initStorage, saveMetadata, loadMetadata, saveSourceFile } from './services/storage';
+import { 
+  initStorage, 
+  saveMetadata, 
+  loadMetadata, 
+  saveSourceFile, 
+  deleteSourceFile, 
+  getCurrentBackupPath, 
+  updateBackupPath, 
+  getDefaultBackupPath 
+} from './services/storage';
 import { FileText, UploadCloud, ExternalLink } from './components/Icons';
 import { Modal } from './components/Modal';
 import { BranchSelector } from './components/BranchSelector';
 import { ConfirmDialog } from './components/ConfirmDialog';
+import { ToastProvider, useToast } from './components/ToastProvider';
 
 // Components
 import { Sidebar } from './components/Sidebar';
 import { Navbar } from './components/Navbar';
 import { VersionList } from './components/VersionList';
 import { ComparisonDrawer } from './components/ComparisonDrawer';
+import { Settings } from './components/Settings';
+import { NewProjectModal } from './components/NewProjectModal';
+import { PreviewModal } from './components/PreviewModal';
 
-const App: React.FC = () => {
+const AppContent: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [activeBranchId, setActiveBranchId] = useState<string | null>(null);
+
+  // 存储路径状态
+  const [currentPath, setCurrentPath] = useState<string>('');
 
   // States for comparison and analysis
   const [comparingVersionId, setComparingVersionId] = useState<string | null>(null);
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
   const [previewingVersion, setPreviewingVersion] = useState<ManuscriptVersion | null>(null);
+  const [comparisonState, setComparisonState] = useState({
+    isOpen: false,
+    oldVersionLabel: '',
+    newVersionLabel: '',
+    oldContent: '',
+    newContent: ''
+  });
+
+  // Toast notifications
+  const { showSuccess, showError, showInfo } = useToast();
 
   // States for Modals
   const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
@@ -31,7 +56,6 @@ const App: React.FC = () => {
 
   // Drag states
   const [isMainDragActive, setIsMainDragActive] = useState(false);
-
   const newProjectFileInputRef = useRef<HTMLInputElement>(null);
 
   // Confirmation Dialog State
@@ -49,28 +73,32 @@ const App: React.FC = () => {
     message: ''
   });
 
-  // Load from Storage
+  // Settings State
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+
+  // --- 初始化加载 ---
   useEffect(() => {
-    const loadProjects = async () => {
+    const loadData = async () => {
       await initStorage();
+      const path = getCurrentBackupPath();
+      setCurrentPath(path);
+      
       const stored = await loadMetadata();
       if (stored) {
         setProjects(stored);
       }
     };
-    loadProjects();
+    loadData();
   }, []);
 
-  // Save to Storage
+  // --- 自动保存 ---
   useEffect(() => {
     if (projects.length > 0) {
       saveMetadata(projects);
     }
   }, [projects]);
 
-
   const activeProject = projects.find(p => p.id === activeProjectId);
-  // Safely access branches (migration safety)
   const branches = activeProject?.branches || [];
   const activeBranch = branches.find(b => b.id === activeBranchId) || branches[0] || null;
   const versions = activeBranch?.versions || [];
@@ -78,11 +106,9 @@ const App: React.FC = () => {
   // Update active branch when project changes
   useEffect(() => {
     if (activeProject && !activeBranchId) {
-      // Default to defaultBranchId or the first branch
       const branches = activeProject.branches || [];
       setActiveBranchId(activeProject.defaultBranchId || branches[0]?.id || null);
     } else if (activeProject && activeBranchId) {
-      // Verify active branch belongs to project
       const branches = activeProject.branches || [];
       const exists = branches.find(b => b.id === activeBranchId);
       if (!exists) {
@@ -91,10 +117,9 @@ const App: React.FC = () => {
     }
   }, [activeProjectId, activeProject, activeBranchId]);
 
-  // --- Logic: Create New Project ---
+  // --- 逻辑：创建新项目 ---
   const handleCreateProject = async (name: string, file: File) => {
     if (!file) return;
-
     try {
       const content = await readFileContent(file);
       const hash = calculateHash(content);
@@ -116,12 +141,10 @@ const App: React.FC = () => {
         changeType: 'Initial',
       };
 
-      // Save source file to app storage
       const storedPath = await saveSourceFile(file, newVersion.id);
       if (storedPath) {
         newVersion.metadata.storedPath = storedPath;
       }
-
 
       const newProject: Project = {
         id: crypto.randomUUID(),
@@ -137,58 +160,36 @@ const App: React.FC = () => {
         lastModified: timestamp
       };
 
-      setProjects(prev => {
-        const updated = [newProject, ...prev];
-        saveMetadata(updated); // Immediate save
-        return updated;
-      });
+      setProjects(prev => [newProject, ...prev]);
       setActiveProjectId(newProject.id);
-      setActiveBranchId('branch-main'); // Set active branch to main
-
-      // Reset and close
+      setActiveBranchId('branch-main');
       setIsNewProjectModalOpen(false);
       setNewProjectName('');
       setNewProjectFile(null);
+      showSuccess('项目创建成功');
     } catch (error) {
-      alert("Error creating project: " + (error as Error).message);
+      showError("创建项目失败: " + (error as Error).message);
     }
   };
 
-  // --- Logic: Add Version to Active Project ---
+  // --- 逻辑：添加版本 ---
   const handleAddVersion = async (file: File) => {
     if (!activeProject || !activeBranch) return;
-
     try {
       const content = await readFileContent(file);
       const timestamp = Date.now();
       const hash = calculateHash(content);
-
-      // Calculate similarity with previous version in CURRENT BRANCH
       const latestVersion = versions[0];
-      const similarity = latestVersion
-        ? calculateSimilarity(content, latestVersion.content)
-        : 0;
-
+      const similarity = latestVersion ? calculateSimilarity(content, latestVersion.content) : 0;
       const changeType = determineVersionType(similarity, !latestVersion);
 
-      // Calculate semantic version
       let versionLabel = 'V1.0.0';
       if (latestVersion) {
-        // Parse previous version "V1.2.3" -> [1, 2, 3]
         const parts = latestVersion.metadata.versionLabel.replace(/^V/, '').split('.').map(Number);
         let [major, minor, patch] = parts.length === 3 ? parts : [1, 0, 0];
-
-        if (changeType === 'Major Update') {
-          major += 1;
-          minor = 0;
-          patch = 0;
-        } else if (changeType === 'Minor Update') {
-          minor += 1;
-          patch = 0;
-        } else {
-          // Tweak or Initial (though initial handled by !latestVersion)
-          patch += 1;
-        }
+        if (changeType === 'Major Update') { major += 1; minor = 0; patch = 0; }
+        else if (changeType === 'Minor Update') { minor += 1; patch = 0; }
+        else { patch += 1; }
         versionLabel = `V${major}.${minor}.${patch}`;
       }
 
@@ -206,33 +207,28 @@ const App: React.FC = () => {
         changeType,
       };
 
-      // Save to storage
       const storedPath = await saveSourceFile(file, newVersion.id);
-      if (storedPath) {
-        newVersion.metadata.storedPath = storedPath;
-      }
+      if (storedPath) newVersion.metadata.storedPath = storedPath;
 
       setProjects(prev => prev.map(p => {
         if (p.id === activeProject.id) {
           return {
             ...p,
             branches: p.branches.map(b =>
-              b.id === activeBranch?.id
-                ? { ...b, versions: [newVersion, ...b.versions] }
-                : b
+              b.id === activeBranch?.id ? { ...b, versions: [newVersion, ...b.versions] } : b
             ),
             lastModified: timestamp
           };
         }
         return p;
       }));
+      showSuccess('版本添加成功');
     } catch (error) {
-      console.error("Failed to add version:", error);
-      alert("Error adding version: " + (error as Error).message);
+      showError("添加版本失败: " + (error as Error).message);
     }
   };
 
-  // --- Logic: Delete Project ---
+  // --- 逻辑：删除处理 ---
   const handleDeleteProject = (e: React.MouseEvent, projectId: string) => {
     e.stopPropagation();
     const project = projects.find(p => p.id === projectId);
@@ -243,13 +239,11 @@ const App: React.FC = () => {
       title: '删除项目',
       message: `确定要删除项目“${project?.name}”及其所有历史版本吗？此操作无法撤销。`
     });
-  }
+  };
 
-  // --- Logic: Delete Version ---
   const handleDeleteVersion = (e: React.MouseEvent, versionId: string) => {
     e.stopPropagation();
     if (!activeProject || !activeBranch) return;
-
     const version = activeBranch.versions.find(v => v.id === versionId);
     setConfirmation({
       isOpen: true,
@@ -260,395 +254,290 @@ const App: React.FC = () => {
     });
   };
 
-  // --- Logic: Confirm Action Execution ---
-  const handleConfirmAction = () => {
+  const handleConfirmAction = async () => {
     setConfirmation({ ...confirmation, isOpen: false });
-
     if (confirmation.type === 'delete-project' && confirmation.id) {
-      // Execute Project Deletion
-      const projectId = confirmation.id;
-      setProjects(prev => prev.filter(p => p.id !== projectId));
-      if (activeProjectId === projectId) {
+      setProjects(prev => prev.filter(p => p.id !== confirmation.id));
+      if (activeProjectId === confirmation.id) {
         setActiveProjectId(null);
         setActiveBranchId(null);
       }
+      showSuccess('项目删除成功');
     } else if (confirmation.type === 'delete-version' && confirmation.id) {
-      // Execute Version Deletion
-      const versionId = confirmation.id;
       if (!activeProject || !activeBranch) return;
-
+      
+      // 找到要删除的版本，获取其存储路径
+      const versionToDelete = activeBranch.versions.find(v => v.id === confirmation.id);
+      if (versionToDelete && versionToDelete.metadata.storedPath) {
+        // 删除物理文件
+        try {
+          await deleteSourceFile(versionToDelete.metadata.storedPath);
+          console.log('文件删除成功:', versionToDelete.metadata.storedPath);
+        } catch (error) {
+          console.error('删除文件失败:', error);
+          // 即使文件删除失败，也继续删除版本记录
+        }
+      }
+      
       setProjects(prev => prev.map(p => {
         if (p.id === activeProject.id) {
+          const updatedBranches = p.branches.map(branch => {
+            if (branch.id === activeBranch.id) {
+              const versionIndex = branch.versions.findIndex(v => v.id === confirmation.id);
+              if (versionIndex === -1) return branch;
+              
+              const updatedVersions = [...branch.versions];
+              updatedVersions.splice(versionIndex, 1);
+              
+              // 重新计算后续版本的相似度
+              for (let i = versionIndex - 1; i >= 0; i--) {
+                if (i > 0) {
+                  const similarity = calculateSimilarity(
+                    updatedVersions[i].content,
+                    updatedVersions[i - 1].content
+                  );
+                  updatedVersions[i].similarityToPrevious = similarity;
+                } else {
+                  updatedVersions[i].similarityToPrevious = null;
+                }
+              }
+              
+              return {
+                ...branch,
+                versions: updatedVersions
+              };
+            }
+            return branch;
+          });
+          
           return {
             ...p,
-            branches: p.branches.map(b => {
-              if (b.id === activeBranch?.id) {
-                // 1. Filter out deleted version
-                const remainingVersions = b.versions.filter(v => v.id !== versionId);
-
-                // 2. Sort oldest to newest for recalculation
-                // (Assuming existing versions are Newest...Oldest, we reverse)
-                const sorted = [...remainingVersions].reverse();
-
-                // 3. Recalculate
-                const recalculated: ManuscriptVersion[] = [];
-
-                for (let i = 0; i < sorted.length; i++) {
-                  const current = sorted[i];
-                  const prev = i > 0 ? recalculated[i - 1] : null;
-
-                  let similarity: number | null = null;
-                  let changeType: any = 'Initial'; // using 'any' to match VersionType string
-                  let versionLabel = 'V1.0.0';
-
-                  if (prev) {
-                    similarity = calculateSimilarity(current.content, prev.content);
-                    changeType = determineVersionType(similarity, false);
-
-                    // Semantic Version Logic
-                    const parts = prev.metadata.versionLabel.replace(/^V/, '').split('.').map(Number);
-                    let [major, minor, patch] = parts.length === 3 ? parts : [1, 0, 0];
-
-                    if (changeType === 'Major Update') {
-                      major += 1; minor = 0; patch = 0;
-                    } else if (changeType === 'Minor Update') {
-                      minor += 1; patch = 0;
-                    } else {
-                      patch += 1;
-                    }
-                    versionLabel = `V${major}.${minor}.${patch}`;
-                  }
-
-                  recalculated.push({
-                    ...current,
-                    metadata: {
-                      ...current.metadata,
-                      versionLabel
-                    },
-                    similarityToPrevious: similarity,
-                    changeType
-                  });
-                }
-
-                // 4. Reverse back to Newest...Oldest
-                return { ...b, versions: recalculated.reverse() };
-              }
-              return b;
-            })
+            branches: updatedBranches,
+            lastModified: Date.now()
           };
         }
         return p;
       }));
-      // If we deleted the version being compared or analyzed, reset those states
-      if (comparingVersionId === versionId) setComparingVersionId(null);
-      if (analyzingId === versionId) setAnalyzingId(null);
-      if (previewingVersion?.id === versionId) setPreviewingVersion(null);
+      showSuccess('版本删除成功');
     }
   };
 
-
-
-  const handleCreateBranch = (name: string) => {
-    if (!activeProject || !activeBranch) return;
-
-    const newBranch: Branch = {
-      id: `branch-${Date.now()}`,
-      name: name,
-      // Clone current branch versions? Or start fresh?
-      // Requirement: "similar to github" -> usually branches off from current state
-      versions: [...activeBranch.versions],
-      createdAt: Date.now()
-    };
-
-    setProjects(prev => prev.map(p => {
-      if (p.id === activeProject.id) {
-        return {
-          ...p,
-          branches: [...p.branches, newBranch]
-        };
-      }
-      return p;
-    }));
-    setActiveBranchId(newBranch.id);
-  };
-
-  // --- 分析的逻辑 ---
-  const handleAnalyze = async (version: ManuscriptVersion) => {
-    alert("AI分析暂不可用");
-    return;
-  };
-
-  // Drag Handlers for Main Area
-  const handleMainDrag = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!activeProject) return;
-    if (e.type === 'dragenter' || e.type === 'dragover') {
-      setIsMainDragActive(true);
-    } else if (e.type === 'dragleave') {
-      setIsMainDragActive(false);
-    }
-  };
-
-  const handleMainDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsMainDragActive(false);
-    if (activeProject && e.dataTransfer.files && e.dataTransfer.files[0]) {
-      await handleAddVersion(e.dataTransfer.files[0]);
-    }
-  };
-
-  // Helper for Comparison Drawer
-  const comparisonBaseVersion = comparingVersionId
-    ? activeBranch?.versions.find(v => v.id === comparingVersionId)
-    : null;
-  const comparisonTargetVersion = comparingVersionId
-    ? activeBranch?.versions[activeBranch.versions.findIndex(v => v.id === comparingVersionId) + 1]
-    : null;
-
-  const handleDownloadVersion = (version: ManuscriptVersion) => {
-    const blob = new Blob([version.content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-
-    // Format date as YYYYMMDD
-    const date = new Date(version.metadata.timestamp);
-    const dateStr = date.toISOString().split('T')[0];
-
-    a.download = `${version.metadata.versionLabel}-${dateStr}-${version.metadata.originalName}`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
+  // --- 逻辑：打开外部程序 (安全重写) ---
   const handleOpenExternal = async () => {
     if (!previewingVersion) return;
     try {
-      const { shell } = window.require('electron');
+      const api = (window as any).electronAPI;
+      if (!api) throw new Error("非 Electron 环境");
 
-      // If we have a stored path (original file), open that directly!
       if (previewingVersion.metadata.storedPath) {
-        await shell.openPath(previewingVersion.metadata.storedPath);
-        return;
+        // 调用我们暴露在 preload.js 中的 openPath (或者通过 ipcRenderer 调用主进程的 shell.openPath)
+        await api.openPath(previewingVersion.metadata.storedPath);
+        showSuccess('正在打开外部程序...');
+      } else {
+        showError("该版本没有关联的本地文件，无法使用外部程序打开。");
       }
-
-      // Fallback for legacy files or non-stored files: create temp
-      const fs = window.require('fs');
-      const path = window.require('path');
-      const os = window.require('os');
-
-      const tempDir = os.tmpdir();
-      let fileName = previewingVersion.metadata.originalName;
-      if (fileName.toLowerCase().endsWith('.docx')) {
-        fileName = fileName.replace(/\.docx$/i, '.txt');
-      }
-
-      const tempPath = path.join(tempDir, `preview-${Date.now()}-${fileName}`);
-      fs.writeFileSync(tempPath, previewingVersion.content);
-
-      await shell.openPath(tempPath);
     } catch (error) {
       console.error('Failed to open external:', error);
-      alert('无法调用外部程序打开文件 (仅支持 Electron 环境)');
+      showError('无法打开外部程序：请检查文件是否仍存在于备份目录中。');
     }
   };
 
+  // --- 逻辑：设置相关 ---
+  const handleOpenSettings = () => {
+    setIsSettingsModalOpen(true);
+  };
+
+  const handleUpdateBackupPath = async (newPath: string) => {
+    try {
+      await updateBackupPath(newPath);
+      setCurrentPath(newPath); // 同步本地状态
+      const stored = await loadMetadata(); // 迁移后重新从新路径读取
+      if (stored) setProjects(stored);
+      showSuccess('备份路径更新成功');
+    } catch (error: any) {
+      throw error; // 抛出错误以便 Settings 弹窗显示错误信息
+    }
+  };
+
+  const handleResetToDefaultPath = async () => {
+    const defaultPath = await getDefaultBackupPath();
+    if (defaultPath === currentPath) return;
+    await handleUpdateBackupPath(defaultPath);
+  };
+
+  // --- 逻辑：下载版本 ---  
+  const handleDownloadVersion = (version: ManuscriptVersion) => {
+    try {
+      const content = version.content;
+      if (!content) {
+        showError('该版本没有内容可供下载');
+        return;
+      }
+
+      const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      
+      // 生成带有版本号和日期的文件名
+      const dateStr = new Date(version.metadata.timestamp).toISOString().split('T')[0];
+      const baseName = version.metadata.originalName.split('.').slice(0, -1).join('.') || 'manuscript';
+      const extension = version.metadata.originalName.split('.').pop() || 'txt';
+      const fileName = `${baseName}_${version.metadata.versionLabel}_${dateStr}.${extension}`;
+      
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showSuccess('下载成功');
+    } catch (error) {
+      console.error('下载失败:', error);
+      showError('下载失败: ' + (error as Error).message);
+    }
+  };
+
+  // --- 逻辑：版本对比 ---  
+  const handleCompare = (versionId: string) => {
+    if (!activeBranch) return;
+    
+    const versions = activeBranch.versions;
+    const versionIndex = versions.findIndex(v => v.id === versionId);
+    
+    if (versionIndex >= 0 && versionIndex < versions.length - 1) {
+      // 当前版本作为新版本，前一个版本作为旧版本
+      const newVersion = versions[versionIndex];
+      const oldVersion = versions[versionIndex + 1];
+      
+      setComparisonState({
+        isOpen: true,
+        oldVersionLabel: oldVersion.metadata.versionLabel,
+        newVersionLabel: newVersion.metadata.versionLabel,
+        oldContent: oldVersion.content,
+        newContent: newVersion.content
+      });
+      
+      setComparingVersionId(versionId);
+    }
+  };
+
+  const handleCloseCompare = () => {
+    setComparisonState({
+      isOpen: false,
+      oldVersionLabel: '',
+      newVersionLabel: '',
+      oldContent: '',
+      newContent: ''
+    });
+    setComparingVersionId(null);
+  };
+
+  // 渲染逻辑保持您的原有 JSX 结构...
+  // (为节省篇幅，以下仅展示关键变动点)
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 font-sans overflow-hidden">
-
       <Sidebar
         projects={projects}
         activeProjectId={activeProjectId}
         onSelectProject={(id) => { setActiveProjectId(id); setComparingVersionId(null); }}
         onDeleteProject={handleDeleteProject}
         onNewProject={() => setIsNewProjectModalOpen(true)}
+        onOpenSettings={handleOpenSettings}
       />
 
-      {/* Main Content */}
       <main className="flex-1 flex flex-col h-full overflow-hidden relative bg-slate-50/30">
-
-        {/* Electron Title Bar Drag Region */}
-        <div className="h-8 w-full bg-transparent shrink-0" style={{ WebkitAppRegion: 'drag' } as any}></div>
+        <div className="h-10 w-full bg-white shrink-0" style={{ WebkitAppRegion: 'drag' } as any}></div>
 
         <Navbar
           activeProject={activeProject || null}
           versionCount={versions.length}
           onUploadVersion={handleAddVersion}
-          onDragEnter={handleMainDrag}
+          onDragEnter={(e) => { e.preventDefault(); setIsMainDragActive(true); }}
         >
-          {/* Inject Branch Selector if active project */}
           {activeProject && activeBranch && (
             <div className="mr-auto ml-4">
               <BranchSelector
                 branches={activeProject.branches}
                 activeBranchId={activeBranch.id}
                 onChangeBranch={setActiveBranchId}
-                onCreateBranch={handleCreateBranch}
+                onCreateBranch={(name) => {
+                    const newBranch: Branch = {
+                        id: `branch-${Date.now()}`,
+                        name,
+                        versions: [...activeBranch.versions],
+                        createdAt: Date.now()
+                    };
+                    setProjects(prev => prev.map(p => p.id === activeProject.id ? { ...p, branches: [...p.branches, newBranch] } : p));
+                    setActiveBranchId(newBranch.id);
+                }}
               />
             </div>
           )}
         </Navbar>
 
-        {/* Upload Version Drag Overlay */}
-        {isMainDragActive && activeProject && (
-          <div
-            className="absolute inset-0 top-16 bg-white/80 backdrop-blur-md z-50 flex items-center justify-center animate-in fade-in duration-200"
-            onDragEnter={handleMainDrag}
-            onDragLeave={handleMainDrag}
-            onDragOver={handleMainDrag}
-            onDrop={handleMainDrop}
-          >
-            <div className="border-4 border-indigo-500/50 border-dashed rounded-3xl p-12 text-center animate-bounce">
-              <div className="w-24 h-24 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
-                <UploadCloud className="w-12 h-12 text-indigo-600" />
-              </div>
-              <h3 className="text-2xl font-bold text-slate-800">Add version to "{activeProject.name}"</h3>
-              <p className="text-slate-500 mt-2 font-medium">Release to upload and analyze changes</p>
-            </div>
-          </div>
-        )}
-
-
-
         <div className="flex-1 flex overflow-hidden relative">
           <VersionList
             activeProject={activeProject || null}
-            versions={versions} // Pass explicit versions from branch
+            versions={versions}
             comparingVersionId={comparingVersionId}
             analyzingId={analyzingId}
-            onCompare={(id) => setComparingVersionId(comparingVersionId === id ? null : id)}
-            onAnalyze={handleAnalyze}
+            onCompare={handleCompare}
+            onAnalyze={setAnalyzingId}
             onPreview={setPreviewingVersion}
-            onDownload={handleDownloadVersion}
             onDelete={handleDeleteVersion}
+            onDownload={handleDownloadVersion}
           />
-
           <ComparisonDrawer
-            isOpen={!!comparingVersionId}
-            onClose={() => setComparingVersionId(null)}
-            oldVersionLabel={comparisonTargetVersion?.metadata.versionLabel}
-            newVersionLabel={comparisonBaseVersion?.metadata.versionLabel}
-            oldContent={comparisonTargetVersion?.content}
-            newContent={comparisonBaseVersion?.content}
+            isOpen={comparisonState.isOpen}
+            oldVersionLabel={comparisonState.oldVersionLabel}
+            newVersionLabel={comparisonState.newVersionLabel}
+            oldContent={comparisonState.oldContent}
+            newContent={comparisonState.newContent}
+            onClose={handleCloseCompare}
           />
         </div>
       </main>
 
-      {/* New Project Modal */}
-      <Modal
-        isOpen={isNewProjectModalOpen}
-        onClose={() => { setIsNewProjectModalOpen(false); setNewProjectFile(null); setNewProjectName(''); }}
-        title="创建新项目"
-      >
-        <form onSubmit={(e) => {
-          e.preventDefault();
-          if (newProjectFile) {
-            const name = newProjectName.trim() || newProjectFile.name.split('.')[0];
-            handleCreateProject(name, newProjectFile);
-          }
-        }} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">项目名称 (可选)</label>
-            <input
-              type="text"
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
-              placeholder="例如：论文初稿"
-              value={newProjectName}
-              onChange={e => setNewProjectName(e.target.value)}
-            />
-          </div>
+      {/* Settings Modal*/}
+      <Settings
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
+        currentBackupPath={currentPath}
+        onUpdateBackupPath={handleUpdateBackupPath}
+        onResetToDefaultPath={handleResetToDefaultPath}
+      />
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">初始手稿</label>
-            <div
-              className={`border-2 border-dashed rounded-xl p-6 text-center transition-all cursor-pointer ${newProjectFile ? 'border-indigo-500 bg-indigo-50' : 'border-slate-300 hover:border-slate-400 hover:bg-slate-50'}`}
-              onClick={() => newProjectFileInputRef.current?.click()}
-            >
-              <input
-                ref={newProjectFileInputRef}
-                type="file"
-                className="hidden"
-                accept=".txt,.md,.docx"
-                onChange={(e) => e.target.files && setNewProjectFile(e.target.files[0])}
-              />
-              {newProjectFile ? (
-                <div className="flex items-center justify-center gap-2 text-indigo-700 font-medium">
-                  <FileText className="w-5 h-5" />
-                  {newProjectFile.name}
-                </div>
-              ) : (
-                <div className="text-slate-500">
-                  <UploadCloud className="w-8 h-8 mx-auto mb-2 text-slate-400" />
-                  <span className="text-sm">点击选择初始手稿</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="pt-2 flex justify-end gap-3">
-            <button
-              type="button"
-              onClick={() => setIsNewProjectModalOpen(false)}
-              className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium transition-colors"
-            >
-              取消
-            </button>
-            <button
-              type="submit"
-              disabled={!newProjectFile}
-              className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-lg text-sm font-semibold shadow-md transition-all active:scale-95"
-            >
-              创建项目
-            </button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* Preview Modal */}
-      <Modal
-        isOpen={!!previewingVersion}
-        onClose={() => setPreviewingVersion(null)}
-        title={previewingVersion ? `预览: ${previewingVersion.metadata.versionLabel} - ${previewingVersion.metadata.originalName}` : '预览'}
-        size="full"
-      >
-        <div className="flex-1 overflow-y-auto p-8 bg-slate-50 rounded-lg font-mono text-base whitespace-pre-wrap leading-relaxed border border-slate-200 shadow-inner">
-          <div className="max-w-5xl mx-auto bg-white p-12 min-h-full shadow-sm">
-            {previewingVersion?.content}
-          </div>
-        </div>
-        <div className="pt-4 flex justify-end gap-3 shrink-0">
-          <button
-            onClick={handleOpenExternal}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm"
-          >
-            <ExternalLink className="w-4 h-4" />
-            使用其他应用打开
-          </button>
-          <button
-            onClick={() => setPreviewingVersion(null)}
-            className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-300 transition-colors"
-          >
-            关闭预览
-          </button>
-        </div>
-      </Modal>
-
-      {/* Custom Confirmation Dialog */}
       <ConfirmDialog
         isOpen={confirmation.isOpen}
         title={confirmation.title}
         message={confirmation.message}
-        confirmLabel="删除"
-        cancelLabel="取消"
-        isDangerous={true}
         onConfirm={handleConfirmAction}
         onCancel={() => setConfirmation({ ...confirmation, isOpen: false })}
       />
+
+      <NewProjectModal
+        isOpen={isNewProjectModalOpen}
+        onClose={() => setIsNewProjectModalOpen(false)}
+        onCreate={handleCreateProject}
+      />
+
+      <PreviewModal
+        isOpen={!!previewingVersion}
+        onClose={() => setPreviewingVersion(null)}
+        version={previewingVersion}
+        onOpenExternal={handleOpenExternal}
+      />
+      
     </div>
+  );
+};
+
+const App: React.FC = () => {
+  return (
+    <ToastProvider>
+      <AppContent />
+    </ToastProvider>
   );
 };
 

@@ -1,6 +1,6 @@
 {
   "name": "manuscript-guard",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "Local-first manuscript version control",
   "main": "main.js",
   "author": "Jiajun Tang",
@@ -50,10 +50,11 @@
       }
     ],
     "files": [
-      "dist/**/*",
-      "main.js",
-      "package.json"
-    ],
+    "dist/**/*",
+    "main.js",
+    "preload.js", 
+    "assets/**/*"
+  ],
     "mac": {
       "target": ["dmg", "zip"],
       "icon": "assets/icon.icns"

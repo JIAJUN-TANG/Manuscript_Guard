@@ -97,24 +97,12 @@
   - `diff`：用于文本差异比较
   - `mammoth`：用于处理 docx 文件
 
-## 📁 项目结构
+## 📁 更新说明
 
-```
-manuscriptguard/
-├── components/         # React 组件
-│   ├── BranchSelector.tsx    # 分支选择器
-│   ├── ComparisonDrawer.tsx  # 差异比较抽屉
-│   ├── Navbar.tsx            # 导航栏
-│   ├── Sidebar.tsx           # 侧边栏
-│   └── VersionList.tsx       # 版本列表
-├── services/          # 服务层
-│   ├── storage.ts            # 存储服务
-│   └── textUtils.ts          # 文本处理工具
-├── App.tsx            # 主应用组件
-├── main.js            # Electron 主进程
-├── package.json       # 项目配置
-└── README.md          # 项目说明
-```
+- **版本 1.0.2** （2026-1-31）
+  - 修复了一些bug，例如macOS中无法读取文件系统的问题。
+  - 新增了修改备份路径的功能，用户可以自定义备份存储位置。
+  - 优化了交互界面。
 
 ## 🚀 未来计划
 ### 功能增强

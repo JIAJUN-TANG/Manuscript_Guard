@@ -3,10 +3,10 @@ export type VersionType = 'Major Update' | 'Minor Update' | 'Tweak' | 'Initial';
 export interface FileMetadata {
   originalName: string;
   timestamp: number;
-  versionLabel: string; // e.g., V1.0.0
+  versionLabel: string;
   hash: string;
   size: number;
-  storedPath?: string; // Path to the saved local file
+  storedPath?: string;
 }
 
 export interface ManuscriptVersion {

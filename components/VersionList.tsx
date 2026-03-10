@@ -1,5 +1,5 @@
 import React from 'react';
-import { ManuscriptVersion, Project } from '../types';
+import { ManuscriptVersion, Project, VersionTypeLabels } from '../types';
 import { GitCommit, Clock, GitDiff, Sparkles, Eye, Trash2, FileText, Download, UploadCloud } from './Icons';
 import { getVersionColor } from '../services/textUtils';
 
@@ -84,7 +84,7 @@ export const VersionList: React.FC<VersionListProps> = ({
                                             <div className="flex items-center gap-3">
                                                 <span className="font-bold text-slate-800 text-xl tracking-tight">{version.metadata.versionLabel}</span>
                                                 <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold tracking-wide border shadow-sm uppercase ${getVersionColor(version.changeType)}`}>
-                                                    {version.changeType}
+                                                    {VersionTypeLabels[version.changeType]}
                                                 </span>
                                             </div>
                                             <div className="flex items-center gap-3 text-xs text-slate-500 mt-2 font-medium">

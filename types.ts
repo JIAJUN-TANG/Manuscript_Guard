@@ -1,5 +1,13 @@
 export type VersionType = 'Major Update' | 'Minor Update' | 'Tweak' | 'Initial';
 
+// 版本类型的中文映射
+export const VersionTypeLabels: Record<VersionType, string> = {
+  'Major Update': '重大更新',
+  'Minor Update': '次要更新',
+  'Tweak': '微调',
+  'Initial': '初始版本'
+};
+
 export interface FileMetadata {
   originalName: string;
   timestamp: number;

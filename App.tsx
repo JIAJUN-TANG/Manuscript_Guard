@@ -366,15 +366,46 @@ const AppContent: React.FC = () => {
   };
 
   // --- 逻辑：下载版本 ---  
-  const handleDownloadVersion = (version: ManuscriptVersion) => {
+  const handleDownloadVersion = async (version: ManuscriptVersion) => {
     try {
+      // 优先使用存储的原始文件路径
+      if (version.metadata.storedPath) {
+        const api = (window as any).electronAPI;
+        if (api) {
+          try {
+            // 生成带有版本号和日期的文件名
+            const dateStr = new Date(version.metadata.timestamp).toISOString().split('T')[0];
+            const baseName = version.metadata.originalName.split('.').slice(0, -1).join('.') || 'manuscript';
+            const extension = version.metadata.originalName.split('.').pop() || 'txt';
+            const fileName = `${baseName}_${version.metadata.versionLabel}_${dateStr}.${extension}`;
+            
+            // 使用Electron API下载文件
+            const success = await api.downloadFile(version.metadata.storedPath, fileName);
+            if (success) {
+              showSuccess('下载成功');
+              return;
+            }
+          } catch (electronError) {
+            console.warn('使用Electron API下载文件失败，将使用文本内容下载:', electronError);
+          }
+        }
+      }
+      
+      // 如果没有存储路径或Electron API失败，使用提取的文本内容
       const content = version.content;
       if (!content) {
         showError('该版本没有内容可供下载');
         return;
       }
 
-      const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+      // 根据文件扩展名设置正确的MIME类型
+      const extension = version.metadata.originalName.split('.').pop()?.toLowerCase() || 'txt';
+      let mimeType = 'text/plain;charset=utf-8';
+      if (extension === 'md') {
+        mimeType = 'text/markdown;charset=utf-8';
+      }
+
+      const blob = new Blob([content], { type: mimeType });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -382,7 +413,6 @@ const AppContent: React.FC = () => {
       // 生成带有版本号和日期的文件名
       const dateStr = new Date(version.metadata.timestamp).toISOString().split('T')[0];
       const baseName = version.metadata.originalName.split('.').slice(0, -1).join('.') || 'manuscript';
-      const extension = version.metadata.originalName.split('.').pop() || 'txt';
       const fileName = `${baseName}_${version.metadata.versionLabel}_${dateStr}.${extension}`;
       
       a.download = fileName;

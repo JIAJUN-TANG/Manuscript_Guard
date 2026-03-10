@@ -45,17 +45,20 @@ export const saveSourceFile = async (file: File, versionId: string): Promise<str
             // 如果没有原始路径（比如通过拖拽或文件选择器），使用文件内容方式
             console.log("没有检测到文件原始路径，将使用文件内容保存");
             
-            // 读取文件内容
+            // 读取文件内容为 ArrayBuffer
             const reader = new FileReader();
-            const content = await new Promise<string>((resolve, reject) => {
-                reader.onload = (e) => resolve(e.target?.result as string);
+            const arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+                reader.onload = (e) => resolve(e.target?.result as ArrayBuffer);
                 reader.onerror = reject;
-                reader.readAsText(file);
+                reader.readAsArrayBuffer(file);
             });
+            
+            // 将 ArrayBuffer 转换为普通对象以便 IPC 传输
+            const contentArray = Array.from(new Uint8Array(arrayBuffer));
             
             // 调用主进程保存文件内容
             const savedPath = await api.saveFileContent({
-                content,
+                content: contentArray,
                 destDir: filesDir,
                 fileName: newFileName
             });

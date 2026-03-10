@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveFileContent: (data) => ipcRenderer.invoke('save-file-content', data),
   deleteFile: (filePath) => ipcRenderer.invoke('delete-file', filePath),
   openPath: (path) => ipcRenderer.invoke('shell:openPath', path),
+  downloadFile: (filePath, fileName) => ipcRenderer.invoke('download-file', { filePath, fileName }),
   
   // 路径拼接辅助
   joinPaths: (...args) => args.join('/')

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const isDev = !app.isPackaged;
@@ -17,9 +17,43 @@ function createWindow() {
   });
 
   if (isDev) {
-    win.loadURL('http://localhost:5173'); // 匹配你的 Vite 配置
+    win.loadURL('http://localhost:5173');
+    // 开发模式下自动打开开发者工具
+    win.webContents.openDevTools();
+    
+    // 创建开发模式菜单
+    const devMenu = Menu.buildFromTemplate([
+      {
+        label: '开发者工具',
+        submenu: [
+          {
+            label: '切换开发者工具',
+            accelerator: 'F12',
+            click: () => {
+              win.webContents.toggleDevTools();
+            }
+          },
+          {
+            label: '刷新',
+            accelerator: 'CmdOrCtrl+R',
+            click: () => {
+              win.reload();
+            }
+          },
+          {
+            label: '强制刷新',
+            accelerator: 'CmdOrCtrl+Shift+R',
+            click: () => {
+              win.webContents.reloadIgnoringCache();
+            }
+          }
+        ]
+      }
+    ]);
+    Menu.setApplicationMenu(devMenu);
   } else {
     win.loadFile(path.join(__dirname, 'dist/index.html'));
+    Menu.setApplicationMenu(null);
   }
 }
 
@@ -110,7 +144,28 @@ ipcMain.handle('save-file-content', async (event, { content, destDir, fileName }
       fs.mkdirSync(destDir, { recursive: true });
     }
     const destPath = path.join(destDir, fileName);
-    fs.writeFileSync(destPath, content, 'utf-8');
+    
+    // 检查 content 类型，处理各种类型的内容
+    if (content instanceof Buffer) {
+      // 直接写入 Buffer
+      fs.writeFileSync(destPath, content);
+    } else if (typeof content === 'string') {
+      // 写入文本内容
+      fs.writeFileSync(destPath, content, 'utf-8');
+    } else if (content && typeof content === 'object' && content.type === 'Buffer' && Array.isArray(content.data)) {
+      // 处理从渲染进程传递的 Buffer 对象
+      const buffer = Buffer.from(content.data);
+      fs.writeFileSync(destPath, buffer);
+    } else if (Array.isArray(content)) {
+      // 处理从渲染进程传递的数字数组（Uint8Array 转换后的）
+      const buffer = Buffer.from(content);
+      fs.writeFileSync(destPath, buffer);
+      console.log('文件内容保存成功（数组方式）:', destPath);
+      return destPath;
+    } else {
+      throw new Error('不支持的内容类型：' + typeof content);
+    }
+    
     console.log('文件内容保存成功:', destPath);
     return destPath;
   } catch (error) {
@@ -137,6 +192,58 @@ ipcMain.handle('delete-file', async (event, filePath) => {
     }
   } catch (error) {
     console.error('删除文件失败:', error);
+    throw error;
+  }
+});
+
+// 下载文件
+ipcMain.handle('download-file', async (event, { filePath, fileName }) => {
+  try {
+    const { dialog } = require('electron');
+    
+    // 显示保存对话框，不设置默认路径，让用户自由选择
+    const result = await dialog.showSaveDialog({
+      title: '保存文件',
+      defaultPath: fileName,
+      filters: [
+        {
+          name: 'All Files',
+          extensions: ['*']
+        }
+      ]
+    });
+    
+    // 检查用户是否取消了对话框
+    if (result.canceled || !result.filePath) {
+      return false;
+    }
+    
+    const savePath = result.filePath;
+    
+    // 验证源文件存在
+    if (!fs.existsSync(filePath)) {
+      console.warn('源文件不存在:', filePath);
+      throw new Error('源文件不存在，无法下载');
+    }
+    
+    // 复制文件到目标位置
+    try {
+      fs.copyFileSync(filePath, savePath);
+      console.log('文件下载成功:', savePath);
+      return true;
+    } catch (copyError) {
+      console.error('复制文件失败:', copyError);
+      // 提供更详细的错误信息
+      if (copyError.code === 'EACCES') {
+        throw new Error('没有权限在此位置保存文件，请选择其他位置（如桌面或文档文件夹）');
+      } else if (copyError.code === 'EPERM') {
+        throw new Error('权限被拒绝，请选择其他有写入权限的位置');
+      } else {
+        throw new Error('保存文件失败：' + copyError.message);
+      }
+    }
+  } catch (error) {
+    console.error('下载文件失败:', error);
     throw error;
   }
 });
